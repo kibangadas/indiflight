@@ -1,4 +1,5 @@
-# This file contains build flags and configuration for the CineRat 3inch drone
+# This file contains build flags and configuration for the HEX6 demo hexacopter
+# with the inner motor RPM INDI loop enabled (manual flight and throw-to-arm)
 
 ###############
 # BUILD FLAGS #
@@ -104,7 +105,7 @@ set blackbox_disable_pos = OFF
 set blackbox_disable_ekf = OFF
 set blackbox_disable_learner = OFF
 set blackbox_high_resolution = ON
-set debug_mode = BARO
+set debug_mode = INDI_RPM_CTL  # motor 1: [0] rpm setpoint, [1] measured, [2] modelled (rad/s), [3] output*1000
 
 # sensor calibration / alignment
 set align_board_roll = 0
@@ -120,6 +121,14 @@ set motor_pwm_protocol = DSHOT600
 set motor_poles = 12
 set motor_output_reordering = 3,0,1,2,5,4,6,7
 mixer HEX6
+
+# inner motor RPM INDI loop (needs dshot_bidir = ON and correct motor_poles)
+# motor model comes from the active indiprofile: indi_act_max_rpm,
+# indi_act_nonlinearity, indi_act_time_constant_ms (written by the learner)
+set indi_use_rpm_ctl = 1
+set indi_rpm_ctl_lowpass_hz = 0   # 0: auto, 3x learned motor bandwidth (~22 Hz at 22 ms)
+set indi_rpm_ctl_delay = 0        # extra telemetry delay in loop samples, tune from debug log
+set indi_rpm_ctl_gain = 100       # 100: plain INDI. Raise in steps of 25 for faster motors
 
 # failsafes
 set failsafe_delay = 5
@@ -231,7 +240,7 @@ set indi_wls_axes_weights = 1,1,50,50,50,5
 # --- actuators: fields can have up to 8 elements ---
 set indi_act_is_motor = 1,1,1,1,1,1,0,0
 set indi_act_is_servo = 0,0,0,0,0,0,0,0
-set indi_act_time_constant_ms = 25, 25, 25, 25, 25, 25       # ms
+set indi_act_time_constant_ms = 22, 22, 22, 22, 22, 22       # ms, measured; learner overwrites in indiprofile 2
 set indi_act_max_rpm = 37000, 37000, 37000, 37000, 37000, 37000 # rpm
 set indi_act_hover_rpm = 21600, 21600, 21600, 21600, 21600, 21600  # rpm
 set indi_act_nonlinearity = 50, 50, 50, 50, 50, 50          # %
@@ -302,7 +311,7 @@ set indi_wls_axes_weights = 1,1,50,50,50,5
 # --- actuators: fields can have up to 8 elements ---
 set indi_act_is_motor = 1,1,1,1,1,1,0,0
 set indi_act_is_servo = 0,0,0,0,0,0,0,0
-set indi_act_time_constant_ms = 25, 25, 25, 25, 25, 25       # ms
+set indi_act_time_constant_ms = 22, 22, 22, 22, 22, 22       # ms, measured; learner overwrites in indiprofile 2
 set indi_act_max_rpm = 37000, 37000, 37000, 37000, 37000, 37000 # rpm
 set indi_act_hover_rpm = 21600, 21600, 21600, 21600, 21600, 21600  # rpm
 set indi_act_nonlinearity = 50, 50, 50, 50, 50, 50          # %
@@ -413,7 +422,7 @@ set throw_to_arm_gyro_high = 600
 set throw_to_arm_momentum_thresh = 400
 set throw_to_arm_release_delay_ms = 50
 set throw_to_arm_idle_before_throw = 1
-set throw_to_arm_allow_manual_modes = 0
+set throw_to_arm_allow_manual_modes = 1  # allow throwing in ANGLE mode (manual), not only in POSITION mode
 
 # learner 0: none, 1: learn during flight, 2: query and learn after catapult, 4: idem. after throw
 set learner_mode = 6
