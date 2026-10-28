@@ -390,6 +390,9 @@ void initIndiRuntime(void) {
         indiRun.dv[j] = 0.f; // delta-pseudo controls in N/kg and Nm/(kgm^2)
     }
 
+    // ---- closed loop rpm controller
+    indiRun.K_rpm = 1.f; // dimensionless, see getMotorCommands(). 0 disables it
+
     // ---- housekeeping
     indiRun.attExecCounter = 0; // count executions (wrapping)
     indiRun.nanCounter = 0; // count times consecutive nans appear in allocation
