@@ -427,12 +427,12 @@ set throw_to_arm_allow_manual_modes = 1  # allow throwing in ANGLE mode (manual)
 # learner 0: none, 1: learn during flight, 2: query and learn after catapult, 4: idem. after throw
 set learner_mode = 6
 set learner_num_actuators = 6
-set learner_delay_time_ms = 250
-set learner_step_time_ms = 50
+set learner_delay_time_ms = 100
+set learner_step_time_ms = 80
 set learner_ramp_time_ms = 100
 set learner_overlap_time_ms = 50
-set learner_step_amplitude = 50
-set learner_ramp_amplitude = 100
+set learner_step_amplitude = 35
+set learner_ramp_amplitude = 70
 set learner_gyro_max = 1500
 set learner_imu_lowpass_hz = 10
 set learner_fx_lowpass_hz = 20
