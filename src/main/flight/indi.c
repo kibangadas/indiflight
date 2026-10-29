@@ -474,49 +474,40 @@ static void updateUStateFs(int i) {
     }
 }
 
-// Simple closed-loop motor speed control: model feedforward + P feedback.
+// INDI motor speed control, as in Mancinelli et al., IMAV 2023, Fig. 4:
 //
-//   omegaSp = omegaMax * sqrt(u)                      (thrust ~ omega^2)
-//   d       = lin(u) + Kp * (omegaSp[k - N] - LPF(omega)) / omegaMax
+//   omegaSp  = omegaMax * sqrt(u)                    (u is thrust, ~ omega^2)
+//   d        = d_f + K * (omegaSp - omega_f) / omegaMax
+//   d_f      = H_f( H_d( z^-Nd * d_applied ) )       see indiUpdateRpmCtlState
+//   omega_f  = H_f( omega_esc )
 //
-// Profile settings: Kp = indi_rpm_ctl_gain / 10, N = indi_rpm_ctl_delay
-// (loop iterations, aligns the setpoint with telemetry latency), LPF = PT1 at
-// indi_rpm_ctl_lpf_hz (0: raw telemetry). Not the omega_fs sync filter: that
-// one is tuned for INDI and its lag only hurts this loop.
-// With Kp = 0, or without valid rpm telemetry, this is exactly the old
-// open-loop d = lin(u).
+// d_f is the command that, according to the delay (N_d) and motor (tau_d)
+// models, produced the rpm we measure now; H_f is applied to both sides so
+// they stay in sync. K = 1 means the paper's constant inverse effectiveness
+// (full command <-> omegaMax). Because d_f follows what was actually applied,
+// the loop has integral action and no windup at the 0 / dMax limits.
+//
+// With K = 0, or without valid rpm telemetry, this is the open loop d = lin(u).
 #ifdef STM32H7
 FAST_CODE
 #endif
 static float rpmControl(int i, bool rpmValid) {
-    float dFf = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
+    float dOpenLoop = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
 
     if (!indiRun.actIsMotor[i]) {
-        return dFf;
+        return dOpenLoop;
     }
 
     float omegaMax = indiRun.actMaxOmega[i];
     indiRun.omegaSp[i] = omegaMax * sqrtf(MAX(indiRun.u[i], 0.f));
 
-    // delay buffer: always keep it running, so it is valid when the loop engages
-    uint8_t idx = indiRun.omegaSpHistIdx[i];
-    float omegaSpDelayed = indiRun.omegaSp[i];
-    if (indiRun.rpmCtlDelay > 0) {
-        omegaSpDelayed = indiRun.omegaSpHist[i][(idx + RPM_CTL_MAX_DELAY - indiRun.rpmCtlDelay) % RPM_CTL_MAX_DELAY];
-    }
-    indiRun.omegaSpHist[i][idx] = indiRun.omegaSp[i];
-    indiRun.omegaSpHistIdx[i] = (idx + 1) % RPM_CTL_MAX_DELAY;
-
-    // feedback filter: also kept running
-    indiRun.omegaCtl[i] = pt1FilterApply(&indiRun.omegaCtlFilter[i], indiRun.omega[i]);
-
     if (!rpmValid || (indiRun.rpmCtlGain <= 0.f) || (omegaMax < 1.f)) {
-        return dFf;
+        return dOpenLoop;
     }
 
-    float err = (omegaSpDelayed - indiRun.omegaCtl[i]) / omegaMax;
     float dMax = indiLinearization(&indiRun.lin[i], indiRun.actMax[i]);
-    return constrainf(dFf + indiRun.rpmCtlGain * err, 0.f, dMax);
+    float dOmega = indiRun.omegaSp[i] - indiRun.rpmOmega_f[i];
+    return constrainf(indiRun.rpmCmd_f[i] + indiRun.rpmCtlGain * dOmega / omegaMax, 0.f, dMax);
 }
 
 #ifdef STM32H7
@@ -820,6 +811,40 @@ void indiUpdateActuatorState( float* motors, float* servos ) {
             // fallback option 2: use actLag filter. TODO
         }
         motor++;
+    }
+}
+
+// Feeds the INDI rpm loop with what the ESCs actually received this loop:
+// the final normalized motor commands, after every override (throw, learner,
+// NN/PID mode, lead-lag, disturbance injection), and 0 when disarmed. Runs
+// every loop in every mode, so d_f and omega_f are valid the moment the rpm
+// loop engages (e.g. right after a throw). Must be called after
+// indiUpdateActuatorState, which reads the ESC rpm into indiRun.omega.
+void indiUpdateRpmCtlState( const float* motors ) {
+    int motor = 0;
+    for (int i = 0; i < indiRun.actNum; i++) {
+        if (!indiRun.actIsMotor[i]) {
+            continue;
+        }
+        if (motor >= getMotorCount()) {
+            break;
+        }
+
+        float dApplied = ARMING_FLAG(ARMED) ? constrainf(motors[motor], 0.f, 1.f) : 0.f;
+        motor++;
+
+        // z^-Nd: ESC command processing delay
+        uint8_t idx = indiRun.rpmCmdHistIdx[i];
+        indiRun.rpmCmdHist[i][idx] = dApplied;
+        float dDelayed = indiRun.rpmCmdHist[i][(idx + (RPM_CTL_MAX_DELAY + 1) - indiRun.rpmCtlDelay) % (RPM_CTL_MAX_DELAY + 1)];
+        indiRun.rpmCmdHistIdx[i] = (idx + 1) % (RPM_CTL_MAX_DELAY + 1);
+
+        // H_tau_d: motor dynamics, then H_tau_f: same filter as the measurement
+        float dModel = pt1FilterApply(&indiRun.rpmCmdMotorModel[i], dDelayed);
+        indiRun.rpmCmd_f[i] = pt1FilterApply(&indiRun.rpmCmdFilter[i], dModel);
+
+        // H_tau_f on the ESC rpm
+        indiRun.rpmOmega_f[i] = pt1FilterApply(&indiRun.rpmOmegaFilter[i], indiRun.omega[i]);
     }
 }
 
