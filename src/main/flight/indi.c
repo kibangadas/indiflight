@@ -71,7 +71,9 @@
 #endif
 
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(indiProfile_t, INDI_PROFILE_COUNT, indiProfiles, PG_INDI_PROFILE, 1);
+// version 2: rpm control fields added (indiProfile_t grew). Bump on every
+// change to indiProfile_t, or stored profiles 1..N are read shifted.
+PG_REGISTER_ARRAY_WITH_RESET_FN(indiProfile_t, INDI_PROFILE_COUNT, indiProfiles, PG_INDI_PROFILE, 2);
 
 FAST_DATA_ZERO_INIT indiRuntime_t indiRun;
 

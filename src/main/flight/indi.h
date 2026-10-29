@@ -157,7 +157,7 @@ typedef struct indiProfile_s {
     bool applyDistToMotor[MAXU]; // whether to apply disturbance to motor
 
     // -------- closed loop rpm controller (rpmCtlGain lives further up)
-    // appended at the end so stored profiles keep their values; 0 = off for both
+    // NB: any change to this struct needs a PG_INDI_PROFILE version bump in indi.c
     uint8_t rpmCtlDelay;     // N_d: ESC command processing delay, in loop iterations [0, RPM_CTL_MAX_DELAY]
     uint16_t rpmCtlLpfHz;    // H_tau_f: 1st order low pass on ESC rpm AND on the modelled command, Hz. 0: unfiltered
     uint8_t useRpmCtl;       // bool: enable the INDI rpm loop (still needs rpmCtlGain > 0 and dshot rpm telemetry)
