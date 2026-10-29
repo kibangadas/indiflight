@@ -2538,6 +2538,8 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_USE_ACCEL_FOR_SPFZ, "%d",                  indiProfile->useAccelForSpfz);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_USE_RPM_DOT_FEEDBACK, "%d",                indiProfile->useRpmDotFeedback);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_RPM_CTL_GAIN, "%d",                        indiProfile->rpmCtlGain);
+        BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_RPM_CTL_DELAY, "%d",                       indiProfile->rpmCtlDelay);
+        BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_RPM_CTL_LPF_HZ, "%d",                      indiProfile->rpmCtlLpfHz);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_ACT_NUM, "%d",                             indiProfile->actNum);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_INDI_ACT_TIME_CONSTANT_MS, "%d,%d,%d,%d",       indiProfile->actTimeConstMs[0],
                                                                                               indiProfile->actTimeConstMs[1],

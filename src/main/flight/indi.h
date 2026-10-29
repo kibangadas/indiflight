@@ -37,6 +37,7 @@
 #define MAXU MAX_SUPPORTED_MOTORS
 #define MAX_SUPPORTED_PSEUDOCONTROLS 6
 #define MAXV MAX_SUPPORTED_PSEUDOCONTROLS
+#define RPM_CTL_MAX_DELAY 16 // max delay buffer length of the rpm controller, in loop iterations
 
 #if (MAXU > 8)
 #error "Blackbox will crash. Fix it to accept more that MAXU > 8"
@@ -155,6 +156,10 @@ typedef struct indiProfile_s {
     int16_t inputDistAmplitude; // amplitude of input disturbance in percent
     bool applyDistToMotor[MAXU]; // whether to apply disturbance to motor
 
+    // -------- closed loop rpm controller (rpmCtlGain lives further up)
+    // appended at the end so stored profiles keep their values; 0 = off for both
+    uint8_t rpmCtlDelay;     // delay of the rpm setpoint before comparing with telemetry, in loop iterations [0, RPM_CTL_MAX_DELAY]
+    uint16_t rpmCtlLpfHz;    // PT1 cutoff on measured rpm used for feedback, Hz. 0: unfiltered
 } indiProfile_t;
 
 // linearization
@@ -264,6 +269,12 @@ typedef struct indiRuntime_s {
     // ---- closed loop rpm controller
     float rpmCtlGain; // P-gain: command [0,1] per unit of (omegaSp - omega)/omegaMax. 0: off
     float omegaSp[MAXU]; // motor speed setpoint rad/s (for debugging; also derivable from u)
+    uint8_t rpmCtlDelay; // setpoint delay in loop iterations
+    float rpmCtlLpfHz; // feedback filter cutoff Hz, 0: off
+    float omegaSpHist[MAXU][RPM_CTL_MAX_DELAY]; // ring buffer of past setpoints
+    uint8_t omegaSpHistIdx[MAXU]; // next write position in omegaSpHist
+    pt1Filter_t omegaCtlFilter[MAXU]; // feedback filter on measured omega
+    float omegaCtl[MAXU]; // (filtered) measured omega used in the rpm loop, rad/s
 
     // ---- housekeeping
     float dT; // target looptime in Sec

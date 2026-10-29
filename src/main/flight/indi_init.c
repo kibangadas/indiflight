@@ -176,6 +176,10 @@ void resetIndiProfile(indiProfile_t *indiProfile) {
         indiProfile->applyDistToMotor[i] = false; // whether to apply disturbance to motor
     }
     #endif
+
+    // ---- closed loop rpm controller
+    indiProfile->rpmCtlDelay = 0; // no setpoint delay
+    indiProfile->rpmCtlLpfHz = 0; // unfiltered feedback
 }
 
 void initIndiRuntimeParameters(void) {
@@ -199,6 +203,8 @@ void initIndiRuntimeParameters(void) {
     indiRun.useConstantG2 = (bool) p->useConstantG2;
     indiRun.useRpmDotFeedback = (bool) p->useRpmDotFeedback;
     indiRun.rpmCtlGain = p->rpmCtlGain * 0.1f;
+    indiRun.rpmCtlDelay = MIN(p->rpmCtlDelay, RPM_CTL_MAX_DELAY);
+    indiRun.rpmCtlLpfHz = (float) p->rpmCtlLpfHz;
     indiRun.maxRateSp.A[0] = (float) DEGREES_TO_RADIANS(p->maxRateSp[0]);          // maximum rate setpoint in deg/s
     indiRun.maxRateSp.A[1] = (float) DEGREES_TO_RADIANS(p->maxRateSp[1]);          // maximum rate setpoint in deg/s
     indiRun.maxRateSp.A[2] = (float) DEGREES_TO_RADIANS(p->maxRateSp[2]);          // maximum rate setpoint in deg/s
@@ -378,6 +384,11 @@ void initIndiRuntime(void) {
         //indiRun.omegaDot[i] = 0.f; // unfiltered motor rate rad/s/s
         indiRun.omegaDot_fs[i] = 0.f; // sync-filtered motor rate rad/s/s
         indiRun.omegaSp[i] = 0.f; // motor speed setpoint rad/s
+        indiRun.omegaCtl[i] = 0.f; // measured omega used in rpm loop
+        indiRun.omegaSpHistIdx[i] = 0;
+        for (int k = 0; k < RPM_CTL_MAX_DELAY; k++) {
+            indiRun.omegaSpHist[i][k] = 0.f; // past rpm setpoints
+        }
     }
     // ---- runtime values -- axes
     for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
@@ -431,6 +442,8 @@ void initIndiRuntime(void) {
     }
     for (int i = 0; i < indiRun.actNum; i++) {
         pt1FilterInit(&indiRun.uLagFilter[i], pt1FilterGain(1.f / (2.f * M_PIf * indiRun.actTimeConstS[i]), indiRun.dT)); // to simulate spinup
+        // rpm loop feedback filter; gain 1 (pass-through) when off
+        pt1FilterInit(&indiRun.omegaCtlFilter[i], (indiRun.rpmCtlLpfHz > 0.f) ? pt1FilterGain(indiRun.rpmCtlLpfHz, indiRun.dT) : 1.f);
         biquadFilterInitLPF(&indiRun.uStateFilter[i], indiRun.imuSyncLp2Hz, gyro.targetLooptime); // only support 2nd order butterworth second order section for now
         biquadFilterInitLPF(&indiRun.omegaFilter[i], indiRun.imuSyncLp2Hz, gyro.targetLooptime); // only support 2nd order butterworth second order section for now
         if (indiRun.useMotorLeadLag) {

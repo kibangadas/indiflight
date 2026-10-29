@@ -477,11 +477,14 @@ static void updateUStateFs(int i) {
 // Simple closed-loop motor speed control: model feedforward + P feedback.
 //
 //   omegaSp = omegaMax * sqrt(u)                      (thrust ~ omega^2)
-//   d       = lin(u) + Kp * (omegaSp - omega) / omegaMax
+//   d       = lin(u) + Kp * (omegaSp[k - N] - LPF(omega)) / omegaMax
 //
+// Profile settings: Kp = indi_rpm_ctl_gain / 10, N = indi_rpm_ctl_delay
+// (loop iterations, aligns the setpoint with telemetry latency), LPF = PT1 at
+// indi_rpm_ctl_lpf_hz (0: raw telemetry). Not the omega_fs sync filter: that
+// one is tuned for INDI and its lag only hurts this loop.
 // With Kp = 0, or without valid rpm telemetry, this is exactly the old
-// open-loop d = lin(u). Uses the unfiltered telemetry omega: the 2nd order
-// sync filter on omega_fs is there for INDI, and its lag only hurts this loop.
+// open-loop d = lin(u).
 #ifdef STM32H7
 FAST_CODE
 #endif
@@ -495,11 +498,23 @@ static float rpmControl(int i, bool rpmValid) {
     float omegaMax = indiRun.actMaxOmega[i];
     indiRun.omegaSp[i] = omegaMax * sqrtf(MAX(indiRun.u[i], 0.f));
 
+    // delay buffer: always keep it running, so it is valid when the loop engages
+    uint8_t idx = indiRun.omegaSpHistIdx[i];
+    float omegaSpDelayed = indiRun.omegaSp[i];
+    if (indiRun.rpmCtlDelay > 0) {
+        omegaSpDelayed = indiRun.omegaSpHist[i][(idx + RPM_CTL_MAX_DELAY - indiRun.rpmCtlDelay) % RPM_CTL_MAX_DELAY];
+    }
+    indiRun.omegaSpHist[i][idx] = indiRun.omegaSp[i];
+    indiRun.omegaSpHistIdx[i] = (idx + 1) % RPM_CTL_MAX_DELAY;
+
+    // feedback filter: also kept running
+    indiRun.omegaCtl[i] = pt1FilterApply(&indiRun.omegaCtlFilter[i], indiRun.omega[i]);
+
     if (!rpmValid || (indiRun.rpmCtlGain <= 0.f) || (omegaMax < 1.f)) {
         return dFf;
     }
 
-    float err = (indiRun.omegaSp[i] - indiRun.omega[i]) / omegaMax;
+    float err = (omegaSpDelayed - indiRun.omegaCtl[i]) / omegaMax;
     float dMax = indiLinearization(&indiRun.lin[i], indiRun.actMax[i]);
     return constrainf(dFf + indiRun.rpmCtlGain * err, 0.f, dMax);
 }
