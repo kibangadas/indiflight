@@ -461,6 +461,49 @@ void getAlphaSpBody(timeUs_t current) {
     indiRun.rateDotSpBody.V.Z = indiRun.rateGains.V.Z * rateErr.V.Z;
 }
 
+// sync-filter the modelled actuator state, so it matches the filtered IMU data
+#ifdef STM32H7
+FAST_CODE
+#endif
+static void updateUStateFs(int i) {
+    indiRun.uState_fs[i] = biquadFilterApply(&indiRun.uStateFilter[i], indiRun.uState[i]);
+    if (indiRun.actIsMotor[i]) {
+        indiRun.uState_fs[i] = constrainf(indiRun.uState_fs[i], 0.f, 1.f);
+    } else if (indiRun.actIsServo[i]) {
+        indiRun.uState_fs[i] = constrainf(indiRun.uState_fs[i], -1.f, 1.f);
+    }
+}
+
+// Simple closed-loop motor speed control: model feedforward + P feedback.
+//
+//   omegaSp = omegaMax * sqrt(u)                      (thrust ~ omega^2)
+//   d       = lin(u) + Kp * (omegaSp - omega) / omegaMax
+//
+// With Kp = 0, or without valid rpm telemetry, this is exactly the old
+// open-loop d = lin(u). Uses the unfiltered telemetry omega: the 2nd order
+// sync filter on omega_fs is there for INDI, and its lag only hurts this loop.
+#ifdef STM32H7
+FAST_CODE
+#endif
+static float rpmControl(int i, bool rpmValid) {
+    float dFf = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
+
+    if (!indiRun.actIsMotor[i]) {
+        return dFf;
+    }
+
+    float omegaMax = indiRun.actMaxOmega[i];
+    indiRun.omegaSp[i] = omegaMax * sqrtf(MAX(indiRun.u[i], 0.f));
+
+    if (!rpmValid || (indiRun.rpmCtlGain <= 0.f) || (omegaMax < 1.f)) {
+        return dFf;
+    }
+
+    float err = (indiRun.omegaSp[i] - indiRun.omega[i]) / omegaMax;
+    float dMax = indiLinearization(&indiRun.lin[i], indiRun.actMax[i]);
+    return constrainf(dFf + indiRun.rpmCtlGain * err, 0.f, dMax);
+}
+
 #ifdef STM32H7
 FAST_CODE
 #endif
@@ -469,9 +512,14 @@ void getMotorCommands(timeUs_t current) {
 
     static float du[MAXU] = {0.f};
     static float rate_prev[XYZ_AXIS_COUNT] = {0.f, 0.f, 0.f};
+    bool rpmTelemetryActive = false;
 #if defined(USE_DSHOT) && defined(USE_DSHOT_TELEMETRY) || defined(MOCKUP)
     static float omega_prev[MAXU] = {0.f};
+    static bool omegaPrevValid = false; // omega_prev holds a real sample from the previous loop
+    rpmTelemetryActive = isDshotTelemetryActive();
 #endif
+    // rpm control needs real measurements, and makes no sense when disarmed
+    bool rpmValid = rpmTelemetryActive && ARMING_FLAG(ARMED);
 
     for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
         // rate
@@ -512,7 +560,11 @@ void getMotorCommands(timeUs_t current) {
     // get motor acceleration
     for (int i = 0; i < indiRun.actNum; i++) {
 #if defined(USE_DSHOT) && defined(USE_DSHOT_TELEMETRY) || defined(MOCKUP)
-        if (isDshotTelemetryActive() && indiRun.useRpmDotFeedback && indiRun.actIsMotor[i]) {
+        if (rpmTelemetryActive && indiRun.useRpmDotFeedback && indiRun.actIsMotor[i]) {
+            if (!omegaPrevValid) {
+                // first sample after telemetry came up: no derivative spike
+                omega_prev[i] = indiRun.omega_fs[i];
+            }
             indiRun.omegaDot_fs[i] = (indiRun.omega_fs[i] - omega_prev[i]) * indiRun.indiFrequency;
             omega_prev[i] = indiRun.omega_fs[i];
             // probably do some limiting here
@@ -522,11 +574,32 @@ void getMotorCommands(timeUs_t current) {
             indiRun.omegaDot_fs[i] = du[i] * indiRun.G2_scaler[i] * omega_inv[i];
         }
     }
+#if defined(USE_DSHOT) && defined(USE_DSHOT_TELEMETRY) || defined(MOCKUP)
+    omegaPrevValid = rpmTelemetryActive && indiRun.useRpmDotFeedback;
+#endif
 
     // horrible code! Fixme todo
     if (indiRun.bypassControl) {
         return;
     }
+
+#ifdef USE_RPM_BENCH_TEST_DANGEROUS
+#pragma message "WARNING: compiling with dangerous code. RPM bench test: NO attitude control, throttle stick -> motor speed"
+    // Bench test of the rpm loop only. Attitude control and allocation are
+    // skipped entirely; every motor gets the same thrust command u straight
+    // from the throttle stick, which sets omegaSp = omegaMax * sqrt(u).
+    // Never fly this build.
+    {
+        float uBench = constrainf((rcCommand[THROTTLE] - RC_OFFSET_THROTTLE) * RC_SCALE_THROTTLE, 0.f, 1.f);
+        for (int i = 0; i < indiRun.actNum; i++) {
+            updateUStateFs(i);
+            indiRun.u[i] = indiRun.actIsMotor[i] ? constrainf(uBench, indiRun.actMin[i], indiRun.actMax[i]) : 0.f;
+            du[i] = indiRun.u[i] - indiRun.uState[i];
+            indiRun.d[i] = rpmControl(i, rpmValid);
+        }
+        return;
+    }
+#endif
 
 
     // use INDI only when in the air, solve linearized global problem otherwise
@@ -676,12 +749,7 @@ void getMotorCommands(timeUs_t current) {
     for (int i=0; i < indiRun.actNum; i++) {
         // apply dgyro filters to sync with input
         // also apply gyro filters here?
-        indiRun.uState_fs[i] = biquadFilterApply(&indiRun.uStateFilter[i], indiRun.uState[i]);
-        if (indiRun.actIsMotor[i]) {
-            indiRun.uState_fs[i] = constrainf(indiRun.uState_fs[i], 0.f, 1.f);
-        } else if (indiRun.actIsServo[i]) {
-            indiRun.uState_fs[i] = constrainf(indiRun.uState_fs[i], -1.f, 1.f);
-        }
+        updateUStateFs(i);
 
         if (as_exit_code < AS_NAN_FOUND_Q) {
             indiRun.u[i] = constrainf(doIndi*indiRun.uState_fs[i] + du_as[i], indiRun.actMin[i], indiRun.actMax[i]);
@@ -690,39 +758,8 @@ void getMotorCommands(timeUs_t current) {
         // apply lag filter to simulate spinup dynamics
         du[i] = indiRun.u[i] - indiRun.uState[i]; // actual du. SHOULD be identical to du_as, when doIndi
 
-        // RPM feedback control (INDI, Mancinelli et al. IMAV2023, Fig. 4).
-        // Only in flight, and only with valid dshot rpm telemetry; otherwise
-        // omega_fs is a constant fallback and the loop would chase it.
-        bool useRpmLoop = false;
-#if (defined(USE_DSHOT) && defined(USE_DSHOT_TELEMETRY)) || defined(MOCKUP)
-        useRpmLoop = doIndi && (indiRun.K_rpm > 0.f) && isDshotTelemetryActive();
-#endif
-        if (indiRun.actIsMotor[i] && useRpmLoop) {
-            // 1. Target speed from the allocated thrust (u ~ omega^2)
-            float omega_max = indiRun.actMaxOmega[i];
-            float rpm_set = omega_max * sqrtf(indiRun.u[i]);
-
-            // 2. Error w.r.t. the sync-filtered measured speed
-            float error = rpm_set - indiRun.omega_fs[i];
-
-            // 3. INDI feedback path: the previously applied command, passed
-            //    through the motor lag model AND the same filter as omega_fs.
-            //    uState_fs is exactly that, so convert it back to command space.
-            float cmd_filtered = indiLinearization(&indiRun.lin[i], indiRun.uState_fs[i]);
-
-            // 4. Inverse control effectiveness d(cmd)/d(omega) at this operating
-            //    point, from the motor curve omega = omega_max*sqrt(k*d^2 + (1-k)*d)
-            float d0 = MAX(cmd_filtered, 0.05f);
-            float k = indiRun.lin[i].k;
-            float dOmega_dCmd = omega_max * (2.f*k*d0 + 1.f - k)
-                                / (2.f * sqrtf(indiOutputCurve(&indiRun.lin[i], d0)));
-
-            // 5. Incremental command; K_rpm is dimensionless (1 = nominal)
-            indiRun.d[i] = constrainf(cmd_filtered + indiRun.K_rpm * error / dOmega_dCmd,
-                                      0.f, indiLinearization(&indiRun.lin[i], indiRun.actMax[i]));
-        } else {
-            indiRun.d[i] = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
-        }
+        // thrust command -> actuator command, closed loop on rpm if enabled
+        indiRun.d[i] = rpmControl(i, rpmValid);
     }
 }
 

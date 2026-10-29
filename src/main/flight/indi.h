@@ -112,7 +112,7 @@ typedef struct indiProfile_s {
     uint8_t attRateDenom;        // only execute attitude loop every attRateDenom loops
     // ---- general INDI config
     uint8_t useConstantG2;         // bool: do not adapt spinup terms based on rpm data, if available and useWls is true
-    uint8_t useRpmFeedback;        // bool: make use of dshot rpm data in feedback loop if available. FIXME: actually implement this
+    uint8_t rpmCtlGain;            // closed-loop motor speed P-gain * 10 (dimensionless). 0: off (open loop). Replaces the unused useRpmFeedback (same offset/size, no PG bump needed)
     // ---- WLS config
     uint8_t useWls;              // bool: enable Wls in favour of static pinv
     uint8_t wlsWarmstart;        // bool: use warmstarting of wls
@@ -179,7 +179,6 @@ typedef struct indiRuntime_s {
     bool useIncrement;
     bool useAccelForSpfz;
     bool useConstantG2;
-    bool useRpmFeedback;
     bool useRpmDotFeedback;
     fp_vector_t maxRateSp;          // maximum rate setpoint in rad/s
     // ---- INDI actuator config
@@ -263,7 +262,8 @@ typedef struct indiRuntime_s {
     biquadFilter_t spfFilter[3]; // only support 2nd order butterworth second order section for now
 
     // ---- closed loop rpm controller
-    float K_rpm; // dimensionless INDI rpm-loop gain. 0: off, 1: nominal
+    float rpmCtlGain; // P-gain: command [0,1] per unit of (omegaSp - omega)/omegaMax. 0: off
+    float omegaSp[MAXU]; // motor speed setpoint rad/s (for debugging; also derivable from u)
 
     // ---- housekeeping
     float dT; // target looptime in Sec

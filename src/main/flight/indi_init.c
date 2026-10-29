@@ -65,18 +65,24 @@ void resetIndiProfile(indiProfile_t *indiProfile) {
         indiProfile->feedforwardCoefs[i] = 0;
     }
 
-    indiProfile->feedforwardFilterCoefs[1] = 1; // Theoretically this makes the filter a straight pass-through, for safety probably better to disable if no values given.
-    for (int i = 1; i < 3; i++) {
-        indiProfile->feedforwardFilterCoefs[i] = 1;
-    }
+    // K, z, p. [0] was never written before (only zero thanks to the PG memset); keep those values explicit
+    indiProfile->feedforwardFilterCoefs[0] = 0;
+    indiProfile->feedforwardFilterCoefs[1] = 1;
+    indiProfile->feedforwardFilterCoefs[2] = 1;
     indiProfile->useFeedforwardFilter = false;
+
+    // ---- attitude lead-lag (previously not reset at all)
+    indiProfile->useAttLeadLag = false;
+    for (int i = 0; i < 5; i++) {
+        indiProfile->attCoefs[i] = 0;
+        indiProfile->rateCoefs[i] = 0;
+    }
 
     // ---- general INDI config
     indiProfile->useIncrement = true;
     indiProfile->useAccelForSpfz = true;
     indiProfile->useRpmDotFeedback = true;
     indiProfile->useMotorLeadLag = false;
-    indiProfile->useAttLeadLag = false;
 
     // ---- INDI actuator config
     indiProfile->actNum = 4;
@@ -115,6 +121,8 @@ void resetIndiProfile(indiProfile_t *indiProfile) {
     // ---- Tailsitter
     indiProfile->tails_use_scheduled = false;
     indiProfile->tails_use_sine = true;
+    indiProfile->tails_d0[0] = 0;
+    indiProfile->tails_d0[1] = 0;
     indiProfile->tails_cxw = 0;
     indiProfile->tails_cyw = 0;
     indiProfile->tails_czw = 0;
@@ -134,7 +142,7 @@ void resetIndiProfile(indiProfile_t *indiProfile) {
     indiProfile->attRateDenom = 1;
     // ---- WLS config
     indiProfile->useConstantG2 = false;
-    indiProfile->useRpmFeedback = false;
+    indiProfile->rpmCtlGain = 0; // closed-loop rpm off by default: identical to previous behaviour
     indiProfile->maxRateSp[0] = 1800.f;          // maximum rate setpoint in deg/s
     indiProfile->maxRateSp[1] = 1800.f;          // maximum rate setpoint in deg/s
     indiProfile->maxRateSp[2] = 1800.f;          // maximum rate setpoint in deg/s
@@ -189,8 +197,8 @@ void initIndiRuntimeParameters(void) {
     indiRun.useIncrement = (bool) p->useIncrement;
     indiRun.useAccelForSpfz = (bool) p->useAccelForSpfz;
     indiRun.useConstantG2 = (bool) p->useConstantG2;
-    indiRun.useRpmFeedback = (bool) p->useRpmFeedback;
     indiRun.useRpmDotFeedback = (bool) p->useRpmDotFeedback;
+    indiRun.rpmCtlGain = p->rpmCtlGain * 0.1f;
     indiRun.maxRateSp.A[0] = (float) DEGREES_TO_RADIANS(p->maxRateSp[0]);          // maximum rate setpoint in deg/s
     indiRun.maxRateSp.A[1] = (float) DEGREES_TO_RADIANS(p->maxRateSp[1]);          // maximum rate setpoint in deg/s
     indiRun.maxRateSp.A[2] = (float) DEGREES_TO_RADIANS(p->maxRateSp[2]);          // maximum rate setpoint in deg/s
@@ -280,9 +288,10 @@ void initIndiRuntimeParameters(void) {
     for (int i = 0; i < indiRun.actNum; i++) {
         if (indiRun.actIsMotor[i]) {
             updateLinearization(&indiRun.lin[i], indiRun.actNonlinearity[i]);
-        } else if (indiRun.actIsServo[i]) {
-            indiRun.lin[i].k = 0.f;
-            indiRun.lin[i].A = 0.f;
+        } else {
+            // servo or unused: identity in both directions. Clear all fields,
+            // so nothing is left over from a previous profile where i was a motor
+            indiRun.lin[i] = (actLin_t) { .A = 0.f, .B = 0.f, .C = 0.f, .k = 0.f };
         }
     }
 
@@ -368,6 +377,7 @@ void initIndiRuntime(void) {
         indiRun.omega_fs[i] = 0.f; // sync-filtered motor speed rad/s
         //indiRun.omegaDot[i] = 0.f; // unfiltered motor rate rad/s/s
         indiRun.omegaDot_fs[i] = 0.f; // sync-filtered motor rate rad/s/s
+        indiRun.omegaSp[i] = 0.f; // motor speed setpoint rad/s
     }
     // ---- runtime values -- axes
     for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
@@ -389,9 +399,6 @@ void initIndiRuntime(void) {
     for (int j = 0; j < MAXV; j++) {
         indiRun.dv[j] = 0.f; // delta-pseudo controls in N/kg and Nm/(kgm^2)
     }
-
-    // ---- closed loop rpm controller
-    indiRun.K_rpm = 1.f; // dimensionless, see getMotorCommands(). 0 disables it
 
     // ---- housekeeping
     indiRun.attExecCounter = 0; // count executions (wrapping)

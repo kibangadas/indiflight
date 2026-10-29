@@ -937,7 +937,7 @@ void updateLearnedParameters(indiProfile_t* indi, positionProfile_t* pos) {
     // indi->useRpmDotFeedback = true;
     // indi->attRateDenom = 4; 
     // indi->useConstantG2 = false;
-    // indi->useRpmFeedback = false;
+    // indi->rpmCtlGain = 0;
     // indi->maxRateSp = 1800.f for all
     // indi->useWls = true;
     // indi->wlsMaxIter = 1;
