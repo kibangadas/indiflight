@@ -591,13 +591,42 @@ void getMotorCommands(timeUs_t current) {
     }
 
 #ifdef USE_RPM_BENCH_TEST_DANGEROUS
-#pragma message "WARNING: compiling with dangerous code. RPM bench test: NO attitude control, throttle stick -> motor speed"
+#pragma message "WARNING: compiling with dangerous code. RPM bench test: NO attitude control, automatic rpm step sequence"
     // Bench test of the rpm loop only. Attitude control and allocation are
-    // skipped entirely; every motor gets the same thrust command u straight
-    // from the throttle stick, which sets omegaSp = omegaMax * sqrt(u).
-    // Never fly this build.
+    // skipped entirely. Never fly this build.
+    //
+    // Automatic rpm step sequence, the same on all motors:
+    //   - armed, throttle stick below RPM_BENCH_START_THROTTLE: idle (u = 0)
+    //   - raise the stick above it: the sequence starts, one step every
+    //     RPM_BENCH_STEP_US, setpoints as fraction of indi_act_max_rpm
+    //   - after the last step: idle again. Stick down and up to run it again.
+    //   - stick down at any time: idle immediately, sequence resets.
+    // omegaSp = omegaMax * frac, i.e. u = frac^2. Logged as omegaSp (rad/s),
+    // compare with omegaUnfiltered (rad/s).
     {
-        float uBench = constrainf((rcCommand[THROTTLE] - RC_OFFSET_THROTTLE) * RC_SCALE_THROTTLE, 0.f, 1.f);
+        static const float rpmBenchSteps[] = { 0.30f, 0.50f, 0.40f, 0.70f, 0.50f, 0.85f, 0.30f };
+#define RPM_BENCH_STEP_US 2000000 // 2 s per step
+#define RPM_BENCH_START_THROTTLE 0.2f // stick fraction that starts / keeps the sequence going
+
+        static bool seqActive = false;
+        static timeUs_t seqStartUs = 0;
+
+        float stick = constrainf((rcCommand[THROTTLE] - RC_OFFSET_THROTTLE) * RC_SCALE_THROTTLE, 0.f, 1.f);
+        float omegaFrac = 0.f;
+        if (ARMING_FLAG(ARMED) && (stick > RPM_BENCH_START_THROTTLE)) {
+            if (!seqActive) {
+                seqActive = true;
+                seqStartUs = current;
+            }
+            unsigned step = (unsigned) (cmpTimeUs(current, seqStartUs) / RPM_BENCH_STEP_US);
+            if (step < ARRAYLEN(rpmBenchSteps)) {
+                omegaFrac = rpmBenchSteps[step];
+            }
+        } else {
+            seqActive = false;
+        }
+
+        float uBench = sq(omegaFrac);
         for (int i = 0; i < indiRun.actNum; i++) {
             updateUStateFs(i);
             indiRun.u[i] = indiRun.actIsMotor[i] ? constrainf(uBench, indiRun.actMin[i], indiRun.actMax[i]) : 0.f;
