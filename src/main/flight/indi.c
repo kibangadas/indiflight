@@ -487,7 +487,8 @@ static void updateUStateFs(int i) {
 // (full command <-> omegaMax). Because d_f follows what was actually applied,
 // the loop has integral action and no windup at the 0 / dMax limits.
 //
-// With K = 0, or without valid rpm telemetry, this is the open loop d = lin(u).
+// With indi_use_rpm_ctl = 0, K = 0, or without valid rpm telemetry, this is
+// the open loop d = lin(u).
 #ifdef STM32H7
 FAST_CODE
 #endif
@@ -501,7 +502,7 @@ static float rpmControl(int i, bool rpmValid) {
     float omegaMax = indiRun.actMaxOmega[i];
     indiRun.omegaSp[i] = omegaMax * sqrtf(MAX(indiRun.u[i], 0.f));
 
-    if (!rpmValid || (indiRun.rpmCtlGain <= 0.f) || (omegaMax < 1.f)) {
+    if (!indiRun.useRpmCtl || !rpmValid || (indiRun.rpmCtlGain <= 0.f) || (omegaMax < 1.f)) {
         return dOpenLoop;
     }
 

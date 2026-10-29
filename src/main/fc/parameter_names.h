@@ -136,6 +136,7 @@
 #define PARAM_NAME_INDI_USE_INCREMENT "indi_use_increment"
 #define PARAM_NAME_INDI_USE_ACCEL_FOR_SPFZ "indi_use_accel_for_thrust"
 #define PARAM_NAME_INDI_USE_RPM_DOT_FEEDBACK "indi_use_rpm_dot_feedback"
+#define PARAM_NAME_INDI_USE_RPM_CTL "indi_use_rpm_ctl"
 #define PARAM_NAME_INDI_RPM_CTL_GAIN "indi_rpm_ctl_gain"
 #define PARAM_NAME_INDI_RPM_CTL_DELAY "indi_rpm_ctl_delay"
 #define PARAM_NAME_INDI_RPM_CTL_LPF_HZ "indi_rpm_ctl_lpf_hz"

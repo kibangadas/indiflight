@@ -180,6 +180,7 @@ void resetIndiProfile(indiProfile_t *indiProfile) {
     // ---- closed loop rpm controller
     indiProfile->rpmCtlDelay = 0; // N_d: no ESC command delay
     indiProfile->rpmCtlLpfHz = 0; // H_tau_f: unfiltered
+    indiProfile->useRpmCtl = false; // rpm loop off: open-loop motor commands
 }
 
 void initIndiRuntimeParameters(void) {
@@ -202,6 +203,7 @@ void initIndiRuntimeParameters(void) {
     indiRun.useAccelForSpfz = (bool) p->useAccelForSpfz;
     indiRun.useConstantG2 = (bool) p->useConstantG2;
     indiRun.useRpmDotFeedback = (bool) p->useRpmDotFeedback;
+    indiRun.useRpmCtl = (bool) p->useRpmCtl;
     indiRun.rpmCtlGain = p->rpmCtlGain * 0.1f;
     indiRun.rpmCtlDelay = MIN(p->rpmCtlDelay, RPM_CTL_MAX_DELAY);
     indiRun.rpmCtlLpfHz = (float) p->rpmCtlLpfHz;

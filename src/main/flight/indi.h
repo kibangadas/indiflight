@@ -160,6 +160,7 @@ typedef struct indiProfile_s {
     // appended at the end so stored profiles keep their values; 0 = off for both
     uint8_t rpmCtlDelay;     // N_d: ESC command processing delay, in loop iterations [0, RPM_CTL_MAX_DELAY]
     uint16_t rpmCtlLpfHz;    // H_tau_f: 1st order low pass on ESC rpm AND on the modelled command, Hz. 0: unfiltered
+    uint8_t useRpmCtl;       // bool: enable the INDI rpm loop (still needs rpmCtlGain > 0 and dshot rpm telemetry)
 } indiProfile_t;
 
 // linearization
@@ -269,6 +270,7 @@ typedef struct indiRuntime_s {
     // ---- closed loop rpm controller
     // INDI rpm control (Mancinelli et al., IMAV 2023, Fig. 4):
     //   d = H_f(H_d(z^-Nd d_applied)) + K * (omegaSp - H_f(omega_esc)) / omegaMax
+    bool useRpmCtl; // enable the INDI rpm loop
     float rpmCtlGain; // K, normalised. 0: off
     uint8_t rpmCtlDelay; // N_d in loop iterations
     float rpmCtlLpfHz; // H_tau_f cutoff Hz, 0: off

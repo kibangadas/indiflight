@@ -1280,6 +1280,7 @@ const clivalue_t valueTable[] = {
     { PARAM_NAME_INDI_USE_INCREMENT,                    VAR_UINT8 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, 1 }, PG_INDI_PROFILE, offsetof(indiProfile_t, useIncrement) },
     { PARAM_NAME_INDI_USE_ACCEL_FOR_SPFZ,               VAR_UINT8 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, 1 }, PG_INDI_PROFILE, offsetof(indiProfile_t, useAccelForSpfz) },
     { PARAM_NAME_INDI_USE_RPM_DOT_FEEDBACK,             VAR_UINT8 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, 1 }, PG_INDI_PROFILE, offsetof(indiProfile_t, useRpmDotFeedback) },
+    { PARAM_NAME_INDI_USE_RPM_CTL,                      VAR_UINT8 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, 1 }, PG_INDI_PROFILE, offsetof(indiProfile_t, useRpmCtl) },
     { PARAM_NAME_INDI_RPM_CTL_GAIN,                     VAR_UINT8 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, 255 }, PG_INDI_PROFILE, offsetof(indiProfile_t, rpmCtlGain) },
     { PARAM_NAME_INDI_RPM_CTL_DELAY,                    VAR_UINT8 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, RPM_CTL_MAX_DELAY }, PG_INDI_PROFILE, offsetof(indiProfile_t, rpmCtlDelay) },
     { PARAM_NAME_INDI_RPM_CTL_LPF_HZ,                   VAR_UINT16 | PROFILE_INDI_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_INDI_PROFILE, offsetof(indiProfile_t, rpmCtlLpfHz) },
