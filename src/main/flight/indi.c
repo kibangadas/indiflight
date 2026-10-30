@@ -690,39 +690,7 @@ void getMotorCommands(timeUs_t current) {
         // apply lag filter to simulate spinup dynamics
         du[i] = indiRun.u[i] - indiRun.uState[i]; // actual du. SHOULD be identical to du_as, when doIndi
 
-        // RPM feedback control (INDI, Mancinelli et al. IMAV2023, Fig. 4).
-        // Only in flight, and only with valid dshot rpm telemetry; otherwise
-        // omega_fs is a constant fallback and the loop would chase it.
-        bool useRpmLoop = false;
-#if (defined(USE_DSHOT) && defined(USE_DSHOT_TELEMETRY)) || defined(MOCKUP)
-        useRpmLoop = doIndi && (indiRun.K_rpm > 0.f) && isDshotTelemetryActive();
-#endif
-        if (indiRun.actIsMotor[i] && useRpmLoop) {
-            // 1. Target speed from the allocated thrust (u ~ omega^2)
-            float omega_max = indiRun.actMaxOmega[i];
-            float rpm_set = omega_max * sqrtf(indiRun.u[i]);
-
-            // 2. Error w.r.t. the sync-filtered measured speed
-            float error = rpm_set - indiRun.omega_fs[i];
-
-            // 3. INDI feedback path: the previously applied command, passed
-            //    through the motor lag model AND the same filter as omega_fs.
-            //    uState_fs is exactly that, so convert it back to command space.
-            float cmd_filtered = indiLinearization(&indiRun.lin[i], indiRun.uState_fs[i]);
-
-            // 4. Inverse control effectiveness d(cmd)/d(omega) at this operating
-            //    point, from the motor curve omega = omega_max*sqrt(k*d^2 + (1-k)*d)
-            float d0 = MAX(cmd_filtered, 0.05f);
-            float k = indiRun.lin[i].k;
-            float dOmega_dCmd = omega_max * (2.f*k*d0 + 1.f - k)
-                                / (2.f * sqrtf(indiOutputCurve(&indiRun.lin[i], d0)));
-
-            // 5. Incremental command; K_rpm is dimensionless (1 = nominal)
-            indiRun.d[i] = constrainf(cmd_filtered + indiRun.K_rpm * error / dOmega_dCmd,
-                                      0.f, indiLinearization(&indiRun.lin[i], indiRun.actMax[i]));
-        } else {
-            indiRun.d[i] = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
-        }
+        indiRun.d[i] = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
     }
 }
 
