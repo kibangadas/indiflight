@@ -352,7 +352,7 @@ void initIndiRuntimeParameters(void) {
     #endif
 }
 
-void initIndiRuntime() {
+void initIndiRuntime(void) {
     // set parameters from profile
     initIndiRuntimeParameters();
 
