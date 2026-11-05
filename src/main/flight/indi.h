@@ -282,6 +282,7 @@ typedef struct indiRuntime_s {
     pt1Filter_t rpmOmegaFilter[MAXU]; // H_tau_f on the ESC rpm
     float rpmCmd_f[MAXU]; // delayed, motor-modelled, filtered applied command [0, 1]
     float rpmOmega_f[MAXU]; // filtered ESC rpm, rad/s
+    bool rpmControlRan[MAXU]; // closed loop law set d[i] this loop. false: open loop or overridden
 
     // ---- housekeeping
     float dT; // target looptime in Sec

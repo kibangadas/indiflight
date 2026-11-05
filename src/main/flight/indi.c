@@ -497,6 +497,8 @@ FAST_CODE
 static float rpmControl(int i, bool rpmValid) {
     float dOpenLoop = indiLinearization(&indiRun.lin[i], indiRun.u[i]);
 
+    indiRun.rpmControlRan[i] = false;
+
     if (!indiRun.actIsMotor[i]) {
         return dOpenLoop;
     }
@@ -510,6 +512,7 @@ static float rpmControl(int i, bool rpmValid) {
 
     float dMax = indiLinearization(&indiRun.lin[i], indiRun.actMax[i]);
     float dOmega = indiRun.omegaSp[i] - indiRun.rpmOmega_f[i];
+    indiRun.rpmControlRan[i] = true;
     return constrainf(indiRun.rpmCmd_f[i] + indiRun.rpmCtlGain * dOmega / omegaMax, 0.f, dMax);
 }
 
